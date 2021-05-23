@@ -229,7 +229,7 @@ not be prompted")
        (workflow-name . ,clubhouse-workflow-name)))
     new))
 
-(cl-defmethod org-tracker-backend/extract-ticket-id
+(cl-defmethod org-tracker-backend/extract-issue-id
   ((_ org-tracker-clubhouse-backend) elt &optional property)
   (org-element-extract-clubhouse-id elt property))
 
@@ -322,6 +322,19 @@ not be prompted")
       "stories"
       :data
       (json-encode params)))))
+
+(cl-defmethod org-tracker-backend/update-issue
+  ((backend org-tracker-clubhouse-backend)
+   issue-id
+   &key epic-id workflow-state-id assignee description title)
+  (clubhouse-request
+   "PUT"
+   (format "stories/%d" issue-id)
+   :data (json-encode
+          (alist-remove-nils
+           `((workflow_state_id ,workflow-state-id)
+             (owner-ids ,(when assignee (list assignee)))
+             (epic_id epic-id))))))
 
 (defun clubhouse-link-to-story (backend story-id)
   (format "https://app.clubhouse.io/%s/story/%d"

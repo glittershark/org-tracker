@@ -48,9 +48,23 @@
   (declare (indent 1))
   `(org-tracker--call-with-jira-backend ,backend (lambda () ,@body)))
 
-(cl-defmethod org-tracker-backend/extract-ticket-id
+(cl-defmethod org-tracker-backend/extract-issue-id
   ((backend org-tracker-jira-backend) elt &optional property)
-  (error "TODO"))
+  (when-let* ((jira-id-link (plist-get elt (or property :JIRA-ID))))
+    (cond
+     ((string-match
+       (rx "[[" (one-or-more anything) "]"
+           "[" (group (one-or-more anything)) "]]")
+       jira-id-link)
+      (match-string 1 jira-id-link))
+     ((string-match
+       (rx "[[https://"
+           (one-or-more anything)
+           "/browse/"
+           (group (one-or-more anything)))
+       jira-id-link)
+      (match-string 1 jira-id-link))
+     (t jira-id-link))))
 
 (cl-defmethod org-tracker-backend/projects
   ((backend org-tracker-jira-backend))
@@ -155,6 +169,52 @@
                    (format "/rest/api/2/issue/%s"
                            (alist-get 'id create-resp)))))
       (jira->issue issue))))
+
+(defun org-tracker-jira--find-transition (backend issue-id to-status-id)
+  (org-tracker--with-jira-backend backend
+    (->>
+        (jiralib2-session-call
+         (format
+          "/rest/api/2/issue/%s/transitions"
+          issue-id))
+      (alist-get 'transitions)
+      (-find (lambda (tr)
+               (equal to-status-id
+                      (->> tr
+                        (alist-get 'to)
+                        (alist-get 'id)))))
+      (alist-get 'id))))
+
+(cl-defmethod org-tracker-backend/update-issue
+  ((backend org-tracker-jira-backend)
+   issue-id
+   &key epic-id workflow-state-id assignee description title)
+  (org-tracker--with-jira-backend backend
+    (when workflow-state-id
+      (if-let ((transition-id (org-tracker-jira--find-transition
+                               backend
+                               issue-id
+                               workflow-state-id)))
+          (jiralib2-session-call
+           (format "/rest/api/2/issue/%s/transitions"
+                   issue-id)
+           :type "POST"
+           :data (json-encode `((transition . ((id . ,transition-id))))))
+        (error
+         "Could not find transition to state %s for issue %s"
+         workflow-state-id
+         issue-id)))
+    (when-let ((fields (alist-remove-nils
+                        `((,(jiralib2--get-epic-custom-field backend)
+                           .
+                           ,epic-id)
+                          (summary . ,title)
+                          (description . ,description)
+                          (assignee . ((id . ,assignee)))))))
+      (jiralib2-session-call
+       (concat "/rest/api/2/issue/" issue-id)
+       :type "PUT"
+       :data (json-encode `((fields . ,fields)))))))
 
 (cl-defmethod org-tracker-backend/populate-issue
   ((backend org-tracker-jira-backend) story)

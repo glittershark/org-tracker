@@ -46,9 +46,9 @@
 ;;; Backends
 ;;;
 
-(cl-defgeneric org-tracker-backend/extract-ticket-id
+(cl-defgeneric org-tracker-backend/extract-issue-id
     (backend elt &optional property)
-  "Query BACKEND for the ID of the ticket referenced by ELT, or NIL if none.
+  "Query BACKEND for the ID of the issue referenced by ELT, or NIL if none.
 Optional arg PROPERTY can specify the org property to extract from")
 
 (cl-defgeneric org-tracker-backend/projects (backend)
@@ -87,12 +87,16 @@ Can return `:UNSUPPORTED' if the backend does not support milestones"
 Can return `:UNSUPPORTED' if the backend does not support iterations"
   :UNSUPPORTED)
 
-(cl-defgeneric org-tracker-backend/search-stories (backend query)
-  "Query BACKEND for stories with text matching QUERY.")
+(cl-defgeneric org-tracker-backend/search-issues (backend query)
+  "Query BACKEND for issues with text matching QUERY.")
 
 (cl-defgeneric org-tracker-backend/create-issue
     (backend &key title project-id epic-id issue-type description labels
              workflow-state-id))
+
+(cl-defgeneric org-tracker-backend/update-issue
+    (backend issue-id
+             &key epic-id workflow-state-id assignee description title))
 
 (cl-defgeneric org-tracker-backend/issue-kv->prop-kv (backend key value)
   "For a particular BACKEND, convert VALUE, the value for KEY in an issue, to a
@@ -340,8 +344,7 @@ If set to nil, will never create stories with labels")
   "Convert the named WORKFLOW-STATE-ID to an org todo keyword."
   (let* ((state-name (alist-get-equal
                       workflow-state-id
-                      (invert-alist (org-tracker-backend/workflow-states
-                                     backend))))
+                      (org-tracker-backend/workflow-states backend)))
          (inv-state-name-alist
           (-map (lambda (cell) (cons (cdr cell) (car cell)))
                 org-tracker-state-alist)))
@@ -710,56 +713,37 @@ element."
          (todo-keyword (-> elt
                            (plist-get :todo-keyword)
                            (substring-no-properties)))
-
-         (clubhouse-id (org-element-extract-clubhouse-id elt))
-         (task-id (plist-get elt :CLUBHOUSE-TASK-ID)))
-    (cond
-     (clubhouse-id
-      (let* ((todo-keyword (-> elt
-                               (plist-get :todo-keyword)
-                               (substring-no-properties))))
-        (when-let* ((clubhouse-workflow-state
-                     (alist-get-equal todo-keyword org-tracker-state-alist))
-                    (workflow-state-id
-                     (alist-get-equal clubhouse-workflow-state
-                                      (org-tracker-workflow-states))))
-          (let ((update-assignee?
-                 (if (or (eq 't org-tracker-claim-story-on-status-update)
-                         (member todo-keyword
-                                 org-tracker-claim-story-on-status-update))
-                     (if org-tracker-username
-                         't
-                       (warn "Not claiming story since `org-tracker-username'
+         (backend (org-tracker-current-backend))
+         (issue-id (org-tracker-backend/extract-issue-id backend elt)))
+    (when-let* ((workflow-state
+                 (alist-get-equal todo-keyword org-tracker-state-alist))
+                (workflow-state-id
+                 (alist-get-equal workflow-state
+                                  (invert-alist
+                                   (org-tracker-backend/workflow-states
+                                    backend)))))
+      (let ((update-assignee?
+             (if (or (eq 't org-tracker-claim-ticket-on-status-update)
+                     (member todo-keyword
+                             org-tracker-claim-ticket-on-status-update))
+                 (if org-tracker-username
+                     't
+                   (warn "Not claiming story since `org-tracker-username'
                        is not set")
-                       nil))))
+                   nil))))
 
-            (if update-assignee?
-                (org-tracker-update-story-internal
-                 clubhouse-id
-                 :workflow_state_id workflow-state-id
-                 :owner_ids (if update-assignee?
-                                (list (org-tracker-whoami))
-                              (list)))
-              (org-tracker-update-story-internal
-                 clubhouse-id
-                 :workflow_state_id workflow-state-id))
-            (message
-             (if update-assignee?
-                 "Successfully claimed story and updated clubhouse status to \"%s\""
-               "Successfully updated clubhouse status to \"%s\"")
-             clubhouse-workflow-state)))))
-
-     (task-id
-      (let ((story-id (org-element-extract-clubhouse-id
-                       elt
-                       :CLUBHOUSE-STORY-ID))
-            (done? (member todo-keyword org-done-keywords)))
-        (org-tracker-update-task-internal
-         story-id
-         (string-to-number task-id)
-         :complete (if done? 't :json-false))
-        (message "Successfully marked clubhouse task status as %s"
-                 (if done? "complete" "incomplete")))))))
+        (message "%s"
+                 (org-tracker-backend/update-issue
+                  backend
+                  issue-id
+                  :workflow-state-id workflow-state-id
+                  :assignee (when update-assignee?
+                              (org-tracker-backend/whoami backend))))
+        (message
+         (if update-assignee?
+             "Successfully claimed issue and updated status to \"%s\""
+           "Successfully updated status to \"%s\"")
+         workflow-state)))))
 
 (defun org-tracker-update-description ()
   "Update the description of the Clubhouse story linked to the current element.
@@ -842,7 +826,9 @@ which labels to set."
      (if-let ((labels (->> issue
                         (alist-get 'labels)
                         ->list
-                        (-map (apply-partially #'alist-get 'name)))))
+                        (-map
+                         (lambda (label)
+                           (if (stringp label) label (alist-get 'name label)))))))
          (format ":%s:" (s-join ":" labels))
        "")
      (->> issue
