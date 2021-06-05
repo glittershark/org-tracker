@@ -245,9 +245,10 @@
         (alist-get 'name value))))
     (otherwise
      (cond
-      ((equal (symbol-name key)
-              (org-tracker--with-jira-backend backend
-                (jiralib2--get-epic-custom-field backend)))
+      ((and (equal (symbol-name key)
+                   (org-tracker--with-jira-backend backend
+                     (jiralib2--get-epic-custom-field backend)))
+            value)
        (cons
         "epic-id"
         (org-link-make-string
