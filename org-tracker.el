@@ -978,15 +978,23 @@ resulting stories at headline level LEVEL."
       (org-tracker-workflow-state-id-to-todo-keyword
        (alist-get 'workflow_state_id story))))))
 
-(defun org-tracker-claim ()
+(defun org-tracker-claim (&optional beg end)
   "Assign the clubhouse story associated with the headline at point to yourself."
-  (interactive)
-  (if org-tracker-username
-      (and
-       (org-tracker-update-story-at-point
-        :owner_ids (list (org-tracker-whoami)))
-       (message "Successfully claimed story"))
-    (warn "Can't claim story if `org-tracker-username' is unset")))
+  (interactive
+   (when (use-region-p)
+     (list (region-beginning) (region-end))))
+  (let ((elts (org-tracker-collect-headlines beg end))
+        (backend (org-tracker-current-backend)))
+    (if org-tracker-username
+        (dolist (elt elts)
+          (when-let ((issue-id (org-tracker-backend/extract-issue-id
+                                backend elt)))
+            (org-tracker-backend/update-issue
+             backend
+             issue-id
+             :assignee (org-tracker-backend/whoami backend))
+            (message "Successfully claimed story")))
+      (warn "Can't claim story if `org-tracker-username' is unset"))))
 
 (defun org-tracker-sync-status (&optional beg end)
   "Pull the status(es) for the story(ies) in region and update the todo state.
