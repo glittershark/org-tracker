@@ -124,14 +124,15 @@
                (jiralib2-session-call "/rest/api/2/myself"))))
 
 (defun jiralib2--get-epic-custom-field (backend)
-  (unless (slot-boundp backend 'epic-custom-field)
+  (unless (and (slot-boundp backend 'epic-custom-field)
+               (not (null (slot-value backend 'epic-custom-field))))
     (let ((fields (jiralib2-session-call "/rest/api/2/field")))
       (setf
        (slot-value backend 'epic-custom-field)
        (->> fields
          (-find (lambda (field) (equal "Epic Link" (alist-get 'name field))))
-         (alist-get 'id))))
-    (slot-value backend 'epic-custom-field)))
+         (alist-get 'id)))))
+  (slot-value backend 'epic-custom-field))
 
 (defun jira->issue (issue)
   (let* ((id (alist-get 'id issue))
