@@ -189,7 +189,7 @@
 (cl-defmethod org-tracker-backend/update-issue
   ((backend org-tracker-jira-backend)
    issue-id
-   &key epic-id workflow-state-id assignee description title)
+   &key epic-id workflow-state-id assignee description title labels)
   (org-tracker--with-jira-backend backend
     (when workflow-state-id
       (if-let ((transition-id (org-tracker-jira--find-transition
@@ -211,7 +211,8 @@
                            ,epic-id)
                           (summary . ,title)
                           (description . ,description)
-                          (assignee . ((id . ,assignee)))))))
+                          (assignee . ((id . ,assignee)))
+                          (labels . ,labels)))))
       (jiralib2-session-call
        (concat "/rest/api/2/issue/" issue-id)
        :type "PUT"

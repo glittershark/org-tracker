@@ -58,6 +58,10 @@
 
  )
 
+(defun alist-remove-nils (alist)
+  "Return a copy of ALIST with all nil values removed"
+  (-remove (lambda (cell) (null (cdr cell))) alist))
+
 (defun find-match-in-alist (target alist)
   (->> alist
        (-find (lambda (key-value)

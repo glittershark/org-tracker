@@ -96,7 +96,7 @@ Can return `:UNSUPPORTED' if the backend does not support iterations"
 
 (cl-defgeneric org-tracker-backend/update-issue
     (backend issue-id
-             &key epic-id workflow-state-id assignee description title))
+             &key epic-id workflow-state-id assignee description title labels))
 
 (cl-defgeneric org-tracker-backend/issue-kv->prop-kv (backend key value)
   "For a particular BACKEND, convert VALUE, the value for KEY in an issue, to a
@@ -252,7 +252,7 @@ If set to nil, will never create stories with labels")
 ;;;
 
 (defun org-element-ticket-id (backend &optional property)
-  (org-tracker-backend/ticket-id
+  (org-tracker-backend/extract-issue-id
    backend
    (org-element-find-headline)
    property))
@@ -332,13 +332,15 @@ If set to nil, will never create stories with labels")
   "Return the tracker labels based on the tags of ELT and the user's config."
   (unless (eq nil org-tracker-create-stories-with-labels)
     (let ((tags (org-get-tags (plist-get elt :contents-begin))))
-      (-map (lambda (l) `((name . ,l)))
-            (cl-case org-tracker-create-stories-with-labels
-              ('t tags)
-              ('existing (-filter (lambda (tag) (-some (lambda (l)
-                                                    (string-equal tag (cdr l)))
-                                                  (org-tracker-labels backend)))
-                                  tags)))))))
+      (cl-case org-tracker-create-stories-with-labels
+        ('t tags)
+        ('existing (-filter
+                    (lambda (tag)
+                      (-some
+                       (lambda (l)
+                         (string-equal tag (cdr l)))
+                       (org-tracker-backend/labels backend)))
+                    tags))))))
 
 (defun org-tracker-workflow-state-id-to-todo-keyword (backend workflow-state-id)
   "Convert the named WORKFLOW-STATE-ID to an org todo keyword."
@@ -671,11 +673,16 @@ allows manually passing a clubhouse ID and list of org-element plists to write"
    :data
    (json-encode attrs)))
 
-(cl-defun org-tracker-update-story-at-point (&rest attrs)
-  (when-let* ((clubhouse-id (org-element-clubhouse-id)))
+(cl-defun org-tracker-update-issue-at-point (backend &rest attrs)
+  (when-let* ((elt (org-element-find-headline))
+              (issue-id (org-tracker-backend/extract-issue-id
+                         backend
+                         elt)))
     (apply
-     #'org-tracker-update-story-internal
-     (cons clubhouse-id attrs))
+     #'org-tracker-backend/update-issue
+     backend
+     issue-id
+     attrs)
     t))
 
 (cl-defun org-tracker-update-epic-at-point (&rest attrs)
@@ -758,7 +765,7 @@ contents of a drawer inside the element called DESCRIPTION, if any."
      (message "Successfully updated story description"))))
 
 (defun org-tracker-update-labels (&optional beg end)
-  "Update the labels of the story or epic linked to the element at point.
+  "Update the labels of the issue linked to the element at point.
 
 When called interactively with a region, operates on all elements between BEG
 and END.
@@ -769,23 +776,16 @@ which labels to set."
    (when (use-region-p)
      (list (region-beginning) (region-end))))
 
-  (dolist (elt (org-tracker-collect-headlines beg end))
-    (let* ((new-labels (org-tracker--labels-for-elt elt))
-           (label-desc (->> new-labels (-map #'cdar) (s-join ":"))))
-      (case (org-tracker--element-type elt)
-        ('story
-         (and
-          (org-tracker-update-story-at-point
-           :labels new-labels)
-          (message "Successfully updated story labels to :%s:"
-                   label-desc)))
-        ('epic
-         (and
-          (org-tracker-update-epic-at-point :labels new-labels)
-          (message "Successfully updated epic labels to :%s:"
-                   label-desc)))
-        (otherwise
-         (message "Element at point is not a clubhouse epic or story!"))))))
+  (let ((backend (org-tracker-current-backend)))
+    (dolist (elt (org-tracker-collect-headlines beg end))
+      (let* ((new-labels (org-tracker--labels-for-elt backend elt))
+             (label-desc (->> new-labels (-map #'cdar) (s-join ":"))))
+        (and
+         (org-tracker-update-issue-at-point
+          backend
+          :labels new-labels)
+         (message "Successfully updated issue labels to :%s:"
+                  label-desc))))))
 
 
 ;;;
