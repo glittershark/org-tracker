@@ -692,22 +692,24 @@ allows manually passing a clubhouse ID and list of org-element plists to write"
      (cons epic-id attrs))
     t))
 
-(defun org-tracker-update-story-title ()
-  "Update the title of the Clubhouse story linked to the current headline.
+(defun org-tracker-update-issue-title (&optional beg end )
+  "Update the title of the tracker issue linked to the current headline.
 
-Update the title of the story linked to the current headline with the text of
-the headline."
-  (interactive)
+When called interactively with a region, operates on all elements between BEG
+and END."
+  (interactive
+   (when (use-region-p)
+     (list (region-beginning) (region-end))))
 
-  (let* ((elt (org-element-find-headline))
-         (title (plist-get elt :title))
-         (clubhouse-id (org-element-clubhouse-id)))
-    (and
-     (org-tracker-update-story-at-point
-      clubhouse-id
-      :name title)
-     (message "Successfully updated story title to \"%s\""
-              title))))
+  (let ((backend (org-tracker-current-backend)))
+    (dolist (elt (org-tracker-collect-headlines beg end))
+      (let* ((title (plist-get elt :title)))
+        (and
+         (org-tracker-update-issue-at-point
+          backend
+          :title title)
+         (message "Successfully updated issue title to \"%s\""
+                  title))))))
 
 (defun org-tracker-update-status ()
   "Update the status of the Clubhouse story linked to the current element.
