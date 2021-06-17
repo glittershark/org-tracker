@@ -1022,39 +1022,44 @@ Uses `org-tracker-state-alist'. Operates over stories from BEG to END"
     (message "Successfully synchronized status of %d stories from Clubhouse"
              (length elts))))
 
-(cl-defun org-tracker-set-epic (&optional story-id epic-id cb &key beg end)
-  "Set the epic of clubhouse story STORY-ID to EPIC-ID, then call CB.
+(cl-defun org-tracker-set-epic (&optional issue-id epic-id cb &key beg end)
+  "Set the epic of the issue with ISSUE-ID to EPIC-ID, then call CB.
 
-When called interactively, prompt for an epic and set the story of the clubhouse
-stor{y,ies} at point or region"
+When called interactively, prompt for an epic and set the issue of the issue[s]
+at point, or region identified by BEG and END"
   (interactive
    (when (use-region-p)
      (list nil nil nil
            :beg (region-beginning)
            :end (region-end))))
-  (if (and story-id epic-id)
-      (progn
-        (org-tracker-update-story-internal
-         story-id :epic-id epic-id)
-        (when cb (funcall cb)))
-    (let ((elts (-filter (lambda (elt) (plist-get elt :CLUBHOUSE-ID))
-                         (org-tracker-collect-headlines beg end))))
-      (org-tracker-prompt-for-epic
-       (lambda (epic-id)
-         (-map
-          (lambda (elt)
-            (let ((story-id (org-element-extract-clubhouse-id elt)))
-              (org-tracker-set-epic
-               story-id epic-id
-               (lambda ()
-                 (org-set-property
-                  "clubhouse-epic"
-                  (org-link-make-string
-                   (org-tracker-link-to-epic epic-id)
-                   (alist-get epic-id (org-tracker-epics))))
-                 (message "Successfully set the epic on story %d to %d"
-                          story-id epic-id)))))
-          elts))))))
+  (let ((backend (org-tracker-current-backend)))
+    (if (and issue-id epic-id)
+        (progn
+          (org-tracker-backend/update-issue
+           backend
+           issue-id
+           :epic-id epic-id)
+          (when cb (funcall cb)))
+      (let ((elts (org-tracker-collect-headlines beg end)))
+        (org-tracker-prompt-for-epic
+         backend
+         (lambda (epic-id)
+           (-map
+            (lambda (elt)
+              (when-let ((issue-id (org-tracker-backend/extract-issue-id
+                                    backend elt)))
+                (org-tracker-set-epic
+                 issue-id
+                 epic-id
+                 (lambda ()
+                   (let ((prop-kv (org-tracker-backend/issue-kv->prop-kv
+                                   backend
+                                   'epic-id
+                                   epic-id)))
+                     (org-set-property (car prop-kv) (cdr prop-kv)))
+                   (message "Successfully set the epic on issue %s to %s"
+                            issue-id epic-id)))))
+            elts)))))))
 
 ;;;
 
