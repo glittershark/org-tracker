@@ -91,12 +91,21 @@ Can return `:UNSUPPORTED' if the backend does not support iterations"
   "Query BACKEND for issues with text matching QUERY.")
 
 (cl-defgeneric org-tracker-backend/create-issue
-    (backend &key title project-id epic-id issue-type description labels
-             workflow-state-id))
+    (backend
+     &rest rest-keys
+     &key title project-id epic-id issue-type description labels
+     workflow-state-id
+     &allow-other-keys))
 
 (cl-defgeneric org-tracker-backend/update-issue
     (backend issue-id
              &key epic-id workflow-state-id assignee description title labels))
+
+(cl-defgeneric org-tracker-backend/create-epic
+    (backend
+     &rest rest-keys
+     &key title project-id milestone-id description labels
+     &allow-other-keys))
 
 (cl-defgeneric org-tracker-backend/issue-kv->prop-kv (backend key value)
   "For a particular BACKEND, convert VALUE, the value for KEY in an issue, to a
@@ -423,47 +432,26 @@ ID."
 ;;; Epic creation
 ;;;
 
-(cl-defun org-tracker-create-epic-internal
-    (title &key milestone-id description labels)
-  (cl-assert (and (stringp title)
-                  (or (null milestone-id)
-                      (integerp milestone-id))
-                  (or (null description)
-                      (stringp description))
-                  (and (listp labels)
-                       (-all? #'stringp labels))))
-  (org-tracker-request
-   "POST"
-   "epics"
-   :data
-   (json-encode
-    `((name . ,title)
-      (milestone_id . ,milestone-id)
-      (description . ,(or description ""))
-      (labels . ,labels)))))
-
-(defun org-tracker-populate-created-epic (elt epic)
+(defun org-tracker-populate-created-epic (backend elt epic &key extra-properties)
   (let ((elt-start  (plist-get elt :begin))
-        (epic-id    (alist-get 'id epic))
-        (milestone-id (alist-get 'milestone_id epic)))
+        (epic-id    (alist-get 'id epic)))
     (save-excursion
       (goto-char elt-start)
 
-      (org-set-property "clubhouse-epic-id"
-                        (org-link-make-string
-                         (org-tracker-link-to-epic epic-id)
-                         (number-to-string epic-id)))
-
-      (when milestone-id
-        (org-set-property "clubhouse-milestone"
-                          (org-link-make-string
-                           (org-tracker-link-to-milestone milestone-id)
-                           (alist-get milestone-id (org-tracker-milestones))))))))
+      (loop for (key . value) in epic
+            do (if-let ((prop-kv (org-tracker-backend/issue-kv->prop-kv
+                                  backend
+                                  key
+                                  value)))
+                   (org-set-property (car prop-kv) (cdr prop-kv))
+                 (when (let ((-compare-fn #'eq)) (-contains-p extra-properties key))
+                   (org-set-property (symbol-name key)
+                                     (format "%s" value))))))))
 
 (defun org-tracker-create-epic (&optional beg end)
-  "Creates a clubhouse epic using selected headlines.
+  "Create a clubhouse epic using selected headlines.
 Will pull the title from the headline at point, or create epics for all the
-headlines in the selected region.
+headlines in the selected region (between BEG and END).
 
 All epics are added to the same milestone, as selected via a prompt.
 If the epics already have a CLUBHOUSE-EPIC-ID, they are filtered and ignored."
@@ -471,20 +459,28 @@ If the epics already have a CLUBHOUSE-EPIC-ID, they are filtered and ignored."
    (when (use-region-p)
      (list (region-beginning) (region-end))))
 
-  (let* ((elts (org-tracker-collect-headlines beg end))
-         (elts (-remove (lambda (elt) (plist-get elt :CLUBHOUSE-EPIC-ID)) elts)))
-    (org-tracker-prompt-for-milestone
-     (lambda (milestone-id)
-       (dolist (elt elts)
-         (let* ((title (plist-get elt :title))
-                (description (org-tracker--description-for-elt elt))
-                (labels (org-tracker--labels-for-elt elt))
-                (epic  (org-tracker-create-epic-internal
-                        title
-                        :milestone-id milestone-id
-                        :labels labels
-                        :description description)))
-           (org-tracker-populate-created-epic elt epic)))))))
+  (let* ((backend (org-tracker-current-backend))
+         (elts    (org-tracker-collect-headlines beg end))
+         (elts    (-remove (lambda (elt) (org-tracker-backend/extract-issue-id backend elt :EPIC-ID)) elts)))
+    (org-tracker-prompt-for-project
+     backend
+     (lambda (project-id)
+       (when project-id
+         (org-tracker-prompt-for-milestone
+          backend
+          (lambda (milestone-id)
+            (dolist (elt elts)
+              (let* ((title (plist-get elt :title))
+                     (description (org-tracker--description-for-elt elt))
+                     (labels (org-tracker--labels-for-elt backend elt))
+                     (epic  (org-tracker-backend/create-epic
+                             backend
+                             :title title
+                             :milestone-id milestone-id
+                             :project-id project-id
+                             :labels labels
+                             :description description)))
+                (org-tracker-populate-created-epic backend elt epic))))))))))
 
 ;;;
 ;;; Story creation
@@ -522,9 +518,9 @@ If the stories already have a CLUBHOUSE-ID, they are filtered and ignored."
    (when (use-region-p)
      (list (region-beginning) (region-end))))
 
-  (let* ((elts     (org-tracker-collect-headlines beg end))
-         (new-elts (-remove (lambda (elt) (plist-get elt :CLUBHOUSE-ID)) elts))
-         (backend (org-tracker-current-backend)))
+  (let* ((backend  (org-tracker-current-backend))
+         (elts     (org-tracker-collect-headlines beg end))
+         (new-elts (-remove (lambda (elt) (org-tracker-backend/extract-issue-id backend elt)) elts)))
     (org-tracker-prompt-for-project
      backend
      (lambda (project-id)

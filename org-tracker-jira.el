@@ -49,8 +49,12 @@
   `(org-tracker--call-with-jira-backend ,backend (lambda () ,@body)))
 
 (cl-defmethod org-tracker-backend/extract-issue-id
-  ((backend org-tracker-jira-backend) elt &optional property)
-  (when-let* ((jira-id-link (plist-get elt (or property :JIRA-ID))))
+  ((_backend org-tracker-jira-backend) elt &optional _property)
+  (when-let* ((jira-id-link
+               (plist-get elt
+                          ;; we don't use a separate property for epic-id like
+                          ;; clubhouse does
+                          :JIRA-ID)))
     (cond
      ((string-match
        (rx "[[" (one-or-more anything) "]"
@@ -123,15 +127,18 @@
     (alist-get 'accountId
                (jiralib2-session-call "/rest/api/2/myself"))))
 
+(defun jiralib2--get-custom-field (backend name)
+  "Query BACKEND for the 'id of the custom field with name NAME."
+  (let ((fields (jiralib2-session-call "/rest/api/2/field")))
+    (->> fields
+         (-find (lambda (field) (equal name (alist-get 'name field))))
+         (alist-get 'id))))
+
 (defun jiralib2--get-epic-custom-field (backend)
   (unless (and (slot-boundp backend 'epic-custom-field)
                (not (null (slot-value backend 'epic-custom-field))))
-    (let ((fields (jiralib2-session-call "/rest/api/2/field")))
-      (setf
-       (slot-value backend 'epic-custom-field)
-       (->> fields
-         (-find (lambda (field) (equal "Epic Link" (alist-get 'name field))))
-         (alist-get 'id)))))
+    (let ((field (jiralib2--get-custom-field backend "Epic Link")))
+      (setf (slot-value backend 'epic-custom-field) field)))
   (slot-value backend 'epic-custom-field))
 
 (defun jira->issue (issue)
@@ -149,18 +156,46 @@
 
 (cl-defmethod org-tracker-backend/create-issue
   ((backend org-tracker-jira-backend)
-   &key title project-id epic-id workflow-state-id issue-type description
-   labels)
+   &key title project-id epic-id workflow-state-id issue-type description labels
+   parent)
   (org-tracker--with-jira-backend backend
     (let* ((epic-field (jiralib2--get-epic-custom-field backend))
-           (fields
-            `((summary . ,title)
-              (project . ((id . ,project-id)))
-              (,epic-field . ,epic-id)
-              ;; (status . ((id . ,workflow-state-id)))
-              (issuetype . ((id . ,issue-type)))
-              (description . ,description)
-              (labels . ,labels)))
+           (fields `((summary . ,title)
+                     (project . ((id . ,project-id)))
+                     (,epic-field . ,epic-id)
+                     ;; (status . ((id . ,workflow-state-id)))
+                     (issuetype . ((id . ,issue-type)))
+                     (description . ,description)
+                     (labels . ,labels)
+                     (parent . ,parent)))
+           (params `((fields . ,fields)))
+           (create-resp (jiralib2-session-call
+                         "/rest/api/2/issue"
+                         :type "POST"
+                         :data (json-encode params)))
+           (issue (jiralib2-session-call
+                   (format "/rest/api/2/issue/%s"
+                           (alist-get 'id create-resp)))))
+      (jira->issue issue))))
+
+(defun org-tracker-jira--epic-issue-type-id (backend)
+  "Query BACKEND for the id of the issue type named \"Epic\"."
+  (->> (org-tracker-backend/issue-types backend)
+       (-find (lambda (it) (equal (cdr it) "Epic")))
+       car))
+
+(cl-defmethod org-tracker-backend/create-epic
+  ((backend org-tracker-jira-backend)
+   &key title project-id milestone-id description labels)
+  (org-tracker--with-jira-backend backend
+    (let* ((epic-name-field (jiralib2--get-epic-custom-field backend "Epic Name"))
+           (epic-issue-type (org-tracker-jira--epic-issue-type-id backend))
+           (fields `((summary . ,title)
+                     (project . ((id . ,project-id)))
+                     (,epic-name-field . ,title)
+                     (description . ,description)
+                     (labels . ,labels)
+                     (issuetype . ((id . ,epic-issue-type)))))
            (params `((fields . ,fields)))
            (create-resp (jiralib2-session-call
                          "/rest/api/2/issue"

@@ -323,6 +323,27 @@ not be prompted")
       :data
       (json-encode params)))))
 
+(cl-defmethod org-tracker-backend/create-epic
+  ((backend org-tracker-clubhouse-backend)
+   &key title milestone-id description labels)
+  (cl-assert (and (stringp title)
+                  (or (null milestone-id)
+                      (integerp milestone-id))
+                  (or (null description)
+                      (stringp description))
+                  (and (listp labels)
+                       (-all? #'stringp labels))))
+  (org-tracker--with-clubhouse-backend backend
+    (clubhouse-request
+     "POST"
+     "epics"
+     :data
+     (json-encode
+      `((name . ,title)
+        (milestone_id . ,milestone-id)
+        (description . ,(or description ""))
+        (labels . ,labels))))))
+
 (cl-defmethod org-tracker-backend/update-issue
   ((backend org-tracker-clubhouse-backend)
    issue-id
