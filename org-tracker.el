@@ -470,7 +470,7 @@ If the epics already have a CLUBHOUSE-EPIC-ID, they are filtered and ignored."
           backend
           (lambda (milestone-id)
             (dolist (elt elts)
-              (let* ((title (plist-get elt :title))
+              (let* ((title (substring-no-properties (plist-get elt :title)))
                      (description (org-tracker--description-for-elt elt))
                      (labels (org-tracker--labels-for-elt backend elt))
                      (epic  (org-tracker-backend/create-epic
@@ -532,7 +532,7 @@ If the stories already have a CLUBHOUSE-ID, they are filtered and ignored."
                    (lambda (story-type)
                      (-map
                       (lambda (elt)
-                        (let* ((title (plist-get elt :title))
+                        (let* ((title (substring-no-properties (plist-get elt :title)))
                                (description
                                 (org-tracker--description-for-elt elt))
                                (labels (org-tracker--labels-for-elt
@@ -606,7 +606,7 @@ allows manually passing a clubhouse ID and list of org-element plists to write"
     (dolist (child-elt-and-start elts-with-starts)
       (let* ((start (car child-elt-and-start))
              (child-elt (cdr child-elt-and-start))
-             (task-name (plist-get child-elt :title)))
+             (task-name (substring-no-properties (plist-get child-elt :title))))
         (unless (funcall task-exists task-name)
           (let ((task (org-tracker-create-task
                        task-name
@@ -699,7 +699,7 @@ and END."
 
   (let ((backend (org-tracker-current-backend)))
     (dolist (elt (org-tracker-collect-headlines beg end))
-      (let* ((title (plist-get elt :title)))
+      (let* ((title (substring-no-properties (plist-get elt :title))))
         (and
          (org-tracker-update-issue-at-point
           backend
