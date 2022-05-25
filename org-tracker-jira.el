@@ -289,7 +289,7 @@
    &rest rest-keys
    &key parent-issue-id project-id
    &allow-other-keys)
-  (plist-delete! rest-keys :parent-issue-id)
+  (org-plist-delete rest-keys :parent-issue-id)
   (let ((issue-type
          (->>
           (org-tracker--with-jira-backend backend
