@@ -87,8 +87,10 @@ Can return `:UNSUPPORTED' if the backend does not support milestones"
 Can return `:UNSUPPORTED' if the backend does not support iterations"
   :UNSUPPORTED)
 
-(cl-defgeneric org-tracker-backend/search-issues (backend query)
-  "Query BACKEND for issues with text matching QUERY.")
+(cl-defgeneric org-tracker-backend/search-issues (backend query &key detailed)
+  "Query BACKEND for issues with text matching QUERY.
+With DETAILED, use the detailed search endpoint (if applicable) for the
+backend")
 
 (cl-defgeneric org-tracker-backend/create-issue
     (backend
@@ -911,18 +913,21 @@ Create `org-mode' headlines from all the resulting stories at headline level LEV
                  (org-align-all-tags))
              text))))))
 
-(defun org-tracker-headlines-from-query (level query)
-  "Create `org-mode' headlines from a clubhouse query.
+(defun org-tracker-headlines-from-search (level query)
+  "Create `org-mode' headlines from a query to the tracker's search endpoint.
 
-Submits QUERY to clubhouse, and creates `org-mode' headlines from all the
-resulting stories at headline level LEVEL."
+Submits QUERY to the configured backend's native search endpoint, and creates
+`org-mode' headlines from all the resulting stories at headline level LEVEL."
   (interactive
    "*nLevel: \nMQuery: ")
-  (let* ((story-list (org-tracker--search-stories query)))
+  (let* ((backend (org-tracker-current-backend))
+         (story-list (org-tracker-backend/search-issues backend query
+                                                        :detailed t)))
     (if (null story-list)
         (message "Query returned no stories: %s" query)
       (let ((text (mapconcat (apply-partially
                               #'org-tracker--issue-to-headline-text
+                              backend
                               level)
                              (reject-archived story-list) "\n")))
         (if (called-interactively-p)
@@ -935,7 +940,7 @@ resulting stories at headline level LEVEL."
   "Prompt the user for a clubhouse issue, then call CB with the full issue."
   (ivy-read "Issue title: "
             (lambda (search-term)
-              (let* ((stories (org-tracker-backend/search-stories
+              (let* ((stories (org-tracker-backend/search-issues
                                backend
                                search-term)))
                 (-map (lambda (issue)

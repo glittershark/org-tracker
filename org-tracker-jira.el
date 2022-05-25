@@ -107,19 +107,40 @@
                      (jiralib2-session-call "/rest/api/2/label")))))
 
 (cl-defmethod org-tracker-backend/search-issues
-  ((backend org-tracker-jira-backend) query)
+  ((backend org-tracker-jira-backend) query &key detailed)
   (org-tracker--with-jira-backend backend
     (->>
-        (jiralib2-session-call
-         "/rest/api/2/issue/picker"
-         :params `((query . ,query)
-                   (currentJQL . "order by created DESC")))
-      (alist-get 'sections)
-      (-find (lambda (section) (equal "cs" (alist-get 'id section))))
-      (alist-get 'issues)
-      (-map (lambda (issue)
-              (cons `(name . ,(alist-get 'summaryText issue))
-                    issue))))))
+        (if detailed
+            (->>
+                (jiralib2-session-call
+                 "/rest/api/2/search"
+                 :params `((jql . ,query)))
+              (alist-get 'issues)
+              (-map #'jira->issue))
+          (->>
+              (jiralib2-session-call
+               "/rest/api/2/issue/picker"
+               :params `((query . ,query)
+                         (currentJQL . "order by created DESC")))
+            (alist-get 'sections)
+            (-find (lambda (section) (equal "cs" (alist-get 'id section))))
+            (alist-get 'issues)
+            (-map (lambda (issue)
+                    (cons `(name . ,(alist-get 'summaryText issue))
+                          issue))))))))
+
+(comment
+ (org-tracker--with-jira-backend --backend
+   (jiralib2-session-call
+    "/rest/api/2/issue/picker"
+    :params `((query . "Design")
+              (currentJQL . "order by created DESC"))))
+
+ (org-tracker-backend/search-issues
+  --backend
+  "Design")
+ )
+
 
 (cl-defmethod org-tracker-backend/whoami
   ((backend org-tracker-jira-backend))
