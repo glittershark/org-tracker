@@ -951,7 +951,8 @@ Submits QUERY to the configured backend's native search endpoint, and creates
 (defun org-tracker-prompt-for-issue (backend cb)
   "Prompt the user for a clubhouse issue, then call CB with the full issue."
   (ivy-read "Issue title: "
-            (lambda (search-term)
+            ;; ignore extra args passed by completion-metadata (which is safe)
+            (lambda (search-term &rest _)
               (let* ((stories (org-tracker-backend/search-issues
                                backend
                                search-term)))
