@@ -771,9 +771,9 @@ and END."
      (list (region-beginning) (region-end))))
   (let ((backend (org-tracker-current-backend)))
     (dolist (elt (org-tracker-collect-headlines beg end))
-      (when-let* ((issue-id (issue-id (org-tracker-backend/extract-issue-id
-                                       backend
-                                       elt)))
+      (when-let* ((issue-id (org-tracker-backend/extract-issue-id
+                             backend
+                             elt))
                   (new-description (org-tracker-find-description-drawer)))
         (and
          (org-tracker-backend/update-issue
