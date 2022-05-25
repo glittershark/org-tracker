@@ -22,13 +22,13 @@ https://id.atlassian.com/manage-profile/security/api-tokens for atlassian cloud.
 Then, add something like this to your emacs config:
 
 #+begin_src emacs-lisp
-(alist-set 'org-tracker-backends
-           'work-jira
-           (make-instance 'org-tracker-jira-backend
-                          :url "https://your-team-name.atlassian.net"
-                          :auth 'token
-                          :user-login-name "your-email@example.com"
-                          :token "jira-api-token"))
+(setf
+ (alist-get 'work-jira org-tracker-backends)
+ (make-instance 'org-tracker-jira-backend
+                :url "https://your-team-name.atlassian.net"
+                :auth 'token
+                :user-login-name "your-email@example.com"
+                :token "jira-api-token"))
 #+end_src
 
 You can then either configure this as the default backend for all org files:
