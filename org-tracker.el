@@ -444,7 +444,7 @@ ID."
 ;;; Epic creation
 ;;;
 
-(defun org-tracker-populate-created-epic (backend elt epic &key extra-properties)
+(cl-defun org-tracker-populate-created-epic (backend elt epic &key extra-properties)
   (let ((elt-start  (plist-get elt :begin))
         (epic-id    (alist-get 'id epic)))
     (save-excursion
@@ -482,7 +482,7 @@ If the epics already have a CLUBHOUSE-EPIC-ID, they are filtered and ignored."
           backend
           (lambda (milestone-id)
             (dolist (elt elts)
-              (let* ((title (substring-no-properties (plist-get elt :title)))
+              (let* ((title (org-tracker--elt-title elt))
                      (description (org-tracker--description-for-elt elt))
                      (labels (org-tracker--labels-for-elt backend elt))
                      (epic  (org-tracker-backend/create-epic
@@ -544,7 +544,7 @@ If the stories already have a CLUBHOUSE-ID, they are filtered and ignored."
                    (lambda (story-type)
                      (-map
                       (lambda (elt)
-                        (let* ((title (substring-no-properties (plist-get elt :title)))
+                        (let* ((title (org-tracker--elt-title elt))
                                (description
                                 (org-tracker--description-for-elt elt))
                                (labels (org-tracker--labels-for-elt

@@ -114,5 +114,9 @@ slot in OBJ to slot-default if it's unbound."
           (cons (alist-get id-attr   resource)
                 (alist-get name-attr resource))))))
 
+(defun org-tracker--elt-title (elt)
+  (let ((title (plist-get elt :title)))
+    (substring-no-properties (if (listp title) (car title) title))))
+
 (provide 'org-tracker-utils)
 ;;; org-tracker-utils.el ends here
