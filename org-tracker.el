@@ -21,6 +21,9 @@
 ;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 ;;; IN THE SOFTWARE.
 
+;;; Keywords: org-mode, project-management, tools, outlines
+;;; Homepage: https://github.com/glittershark/org-tracker
+
 ;;; Commentary:
 ;;; org-tracker provides simple, unopinionated integration between Emacs's
 ;;; org-mode and multiple issue trackers

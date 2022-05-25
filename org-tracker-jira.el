@@ -3,6 +3,7 @@
 ;; Copyright (C) 2021 Griffin Smith
 ;;
 ;; Author: Griffin Smith <https://github.com/glittershark>
+;; URL: https://github.com/glittershark/org-tracker
 ;; Maintainer: Griffin Smith <root@gws.fyi>
 ;; Created: May 19, 2021
 ;; Modified: May 19, 2021
