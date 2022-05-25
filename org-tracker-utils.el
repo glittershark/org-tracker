@@ -37,6 +37,11 @@
                  (list plist-key (alist-get alist-key alist)))))
        (-flatten-n 1)))
 
+(defun plist->alist (plist)
+  (->> plist
+    (-partition 2)
+    (-map (lambda (kv) (cons (car kv) (cadr kv))))))
+
 (defun alist-get-equal (key alist)
   "Like `alist-get', but uses `equal' instead of `eq' for comparing keys"
   (->> alist

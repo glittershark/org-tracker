@@ -274,6 +274,18 @@
        :type "PUT"
        :data (json-encode `((fields . ,fields)))))))
 
+(cl-defmethod org-tracker-backend/create-subtask
+  ((backend org-tracker-jira-backend)
+   &rest rest-keys
+   &key parent-issue-id
+   &allow-other-keys)
+  (plist-delete! rest-keys :parent-issue-id)
+  (apply
+   #'org-tracker-backend/create-issue
+   backend
+   :parent `((key . ,parent-issue-id))
+   rest-keys))
+
 (cl-defmethod org-tracker-backend/populate-issue
   ((backend org-tracker-jira-backend) story)
   (let ((key (alist-get 'key story)))
@@ -283,36 +295,39 @@
 
 (cl-defmethod org-tracker-backend/issue-kv->prop-kv
   ((backend org-tracker-jira-backend) key value)
-  (case key
-    (key
-     (cons
-      "jira-id"
-      (org-link-make-string
-       (format "%s/browse/%s"
-               (jira-url backend)
-               value)
-       value)))
-    (issuetype
-     (cons
-      "issue-type"
-      (if (stringp value)
-          (alist-get-equal value
-                           (org-tracker-backend/issue-types
-                            backend))
-        (alist-get 'name value))))
-    (otherwise
-     (cond
-      ((and (equal (symbol-name key)
-                   (org-tracker--with-jira-backend backend
-                     (jiralib2--get-epic-custom-field backend)))
-            value)
+  (when value
+    (case key
+      (key
        (cons
-        "epic-id"
+        "jira-id"
         (org-link-make-string
          (format "%s/browse/%s"
                  (jira-url backend)
                  value)
-         value)))))))
+         value)))
+      (issuetype
+       (cons
+        "issue-type"
+        (if (stringp value)
+            (alist-get-equal value
+                             (org-tracker-backend/issue-types
+                              backend))
+          (alist-get 'name value))))
+      (otherwise
+       (cond
+        ((or
+          (eq key 'epic-id)
+          (equal (symbol-name key)
+                 (org-tracker--with-jira-backend backend
+                   (jiralib2--get-epic-custom-field backend))))
+         (cons
+          "epic-id"
+          (org-link-make-string
+           (format "%s/browse/%s"
+                   (jira-url backend)
+                   value)
+           value))))))))
+
 
 (provide 'org-tracker-jira)
 ;;; org-tracker-jira.el ends here

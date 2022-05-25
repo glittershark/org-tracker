@@ -87,6 +87,11 @@ Can return `:UNSUPPORTED' if the backend does not support milestones"
 Can return `:UNSUPPORTED' if the backend does not support iterations"
   :UNSUPPORTED)
 
+(cl-defgeneric org-tracker-backend/issue-subtasks (backend)
+  "Query BACKEND for a list of the subtasks of the current issue.
+Can return `:UNSUPPORTED' if the backend does not support subtasks"
+  :UNSUPPORTED)
+
 (cl-defgeneric org-tracker-backend/search-issues (backend query &key detailed)
   "Query BACKEND for issues with text matching QUERY.
 With DETAILED, use the detailed search endpoint (if applicable) for the
@@ -102,6 +107,10 @@ backend")
 (cl-defgeneric org-tracker-backend/update-issue
     (backend issue-id
              &key epic-id workflow-state-id assignee description title labels))
+
+(cl-defgeneric org-tracker-backend/create-subtask
+    (backend &key title parent-issue-id description workflow-state-id)
+  :UNSUPPORTED)
 
 (cl-defgeneric org-tracker-backend/create-epic
     (backend
@@ -137,7 +146,7 @@ If nil is returned, the value will not be set as a property of the element"
           (buffer-substring-no-properties (point) (point-at-eol))))))))
 
 (defun org-tracker--populate-local-backend ()
-  (when-let ((local-backend (org-tracker--configured-backend)))
+  (let ((local-backend (org-tracker--configured-backend)))
     (setq-local org-tracker-local-backend local-backend)))
 
 (add-hook 'org-mode-hook #'org-tracker--populate-local-backend)
@@ -583,23 +592,25 @@ children of that headline into tasks in the task list of the story."
    (format "/stories/%d/tasks" story-id)
    :data (json-encode `((description . ,title)))))
 
-(defun org-tracker-push-task-list (&optional parent-clubhouse-id child-elts)
+(defun org-tracker-push-task-list (&optional parent-issue-id child-elts)
   "Writes each child of the element at point as a task list item.
 
-When called as (org-tracker-push-task-list PARENT-CLUBHOUSE-ID CHILD-ELTS),
-allows manually passing a clubhouse ID and list of org-element plists to write"
+When called as (org-tracker-push-task-list PARENT-ISSUE-ID CHILD-ELTS),
+allows manually passing an issue ID and list of org-element plists to write"
   (interactive)
-  (let* ((elt (org-element-and-children-at-point))
-         (parent-clubhouse-id (or parent-clubhouse-id
-                                  (org-element-extract-clubhouse-id elt)))
+  (let* ((backend (org-tracker-current-backend))
+         (elt (org-element-and-children-at-point))
+         (parent-issue-id (or parent-issue-id
+                              (org-tracker-backend/extract-issue-id
+                               backend elt)))
          (child-elts (or child-elts (plist-get elt :children)))
-         (story (org-tracker-get-story parent-clubhouse-id))
+         (story (org-tracker-backend/ parent-clubhouse-id))
          (existing-tasks (alist-get 'tasks story))
          (task-exists
           (lambda (task-name)
             (cl-some (lambda (task)
-                    (string-equal task-name (alist-get 'description task)))
-                  existing-tasks)))
+                       (string-equal task-name (alist-get 'description task)))
+                     existing-tasks)))
          (elts-with-starts
           (-map (lambda (e) (cons (set-marker (make-marker)
                                          (plist-get e :begin))
@@ -650,16 +661,6 @@ allows manually passing a clubhouse ID and list of org-element plists to write"
 ;;;
 ;;; Story updates
 ;;;
-
-(cl-defun org-tracker-update-story-internal
-    (story-id &rest attrs)
-  (cl-assert (and (integerp story-id)
-                  (listp attrs)))
-  (org-tracker-request
-   "PUT"
-   (format "stories/%d" story-id)
-   :data
-   (json-encode attrs)))
 
 (cl-defun org-tracker-update-epic-internal
     (story-id &rest attrs)
@@ -716,53 +717,66 @@ Update the status of the Clubhouse story linked to the current element with the
 entry in `org-tracker-state-alist' corresponding to the todo-keyword of the
 element."
   (interactive)
-  (let* ((elt (org-element-find-headline))
-         (todo-keyword (-> elt
+  (when-let ((backend (org-tracker-current-backend t)))
+    (let* ((elt (org-element-find-headline))
+           (todo-keyword (-> elt
                            (plist-get :todo-keyword)
                            (substring-no-properties)))
-         (backend (org-tracker-current-backend))
-         (issue-id (org-tracker-backend/extract-issue-id backend elt)))
-    (when-let* ((workflow-state
-                 (alist-get-equal todo-keyword org-tracker-state-alist))
-                (workflow-state-id
-                 (alist-get-equal workflow-state
-                                  (invert-alist
-                                   (org-tracker-backend/workflow-states
-                                    backend)))))
-      (let ((update-assignee?
-             (if (or (eq 't org-tracker-claim-ticket-on-status-update)
-                     (member todo-keyword
-                             org-tracker-claim-ticket-on-status-update))
-                 (if org-tracker-username
-                     't
-                   (warn "Not claiming story since `org-tracker-username'
+           (issue-id (org-tracker-backend/extract-issue-id backend elt)))
+      (when issue-id
+        (when-let* ((workflow-state
+                     (alist-get-equal todo-keyword org-tracker-state-alist))
+                    (workflow-state-id
+                     (alist-get-equal workflow-state
+                                      (invert-alist
+                                       (org-tracker-backend/workflow-states
+                                        backend)))))
+          (let ((update-assignee?
+                 (if (or (eq 't org-tracker-claim-ticket-on-status-update)
+                         (member todo-keyword
+                                 org-tracker-claim-ticket-on-status-update))
+                     (if org-tracker-username
+                         't
+                       (warn "Not claiming story since `org-tracker-username'
                        is not set")
-                   nil))))
+                       nil))))
 
-        (message "%s"
-                 (org-tracker-backend/update-issue
-                  backend
-                  issue-id
-                  :workflow-state-id workflow-state-id
-                  :assignee (when update-assignee?
-                              (org-tracker-backend/whoami backend))))
-        (message
-         (if update-assignee?
-             "Successfully claimed issue and updated status to \"%s\""
-           "Successfully updated status to \"%s\"")
-         workflow-state)))))
+            (message "%s"
+                     (org-tracker-backend/update-issue
+                      backend
+                      issue-id
+                      :workflow-state-id workflow-state-id
+                      :assignee (when update-assignee?
+                                  (org-tracker-backend/whoami backend))))
+            (message
+             (if update-assignee?
+                 "Successfully claimed issue and updated status to \"%s\""
+               "Successfully updated status to \"%s\"")
+             workflow-state)))))))
 
-(defun org-tracker-update-description ()
-  "Update the description of the Clubhouse story linked to the current element.
+(defun org-tracker-update-description (&optional beg end)
+  "Update the description of the issue linked to the element at point
 
-Update the status of the Clubhouse story linked to the current element with the
-contents of a drawer inside the element called DESCRIPTION, if any."
-  (interactive)
-  (when-let* ((new-description (org-tracker-find-description-drawer)))
-    (and
-     (org-tracker-update-story-at-point
-      :description new-description)
-     (message "Successfully updated story description"))))
+Update the status of the issue linked to the current element with the
+contents of a drawer inside the element called DESCRIPTION, if any.
+
+When called interactively with a region, operates on all elements between BEG
+and END."
+  (interactive
+   (when (use-region-p)
+     (list (region-beginning) (region-end))))
+  (let ((backend (org-tracker-current-backend)))
+    (dolist (elt (org-tracker-collect-headlines beg end))
+      (when-let* ((issue-id (issue-id (org-tracker-backend/extract-issue-id
+                                       backend
+                                       elt)))
+                  (new-description (org-tracker-find-description-drawer)))
+        (and
+         (org-tracker-backend/update-issue
+          backend
+          issue-id
+          :description new-description)
+         (message "Successfully updated story description"))))))
 
 (defun org-tracker-update-labels (&optional beg end)
   "Update the labels of the issue linked to the element at point.
