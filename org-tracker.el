@@ -158,7 +158,7 @@ If nil is returned, the value will not be set as a property of the element"
 
 (defun org-tracker-backend-name->backend (backend-name)
   (or
-   (car (alist-get backend-name org-tracker-backends))
+   (alist-get backend-name org-tracker-backends)
    (error "Could not find org-tracker backend named `%s'"
           backend-name)))
 
