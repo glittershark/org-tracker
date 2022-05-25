@@ -136,6 +136,27 @@
     (alist-get 'accountId
                (jiralib2-session-call "/rest/api/2/myself"))))
 
+(cl-defmethod org-tracker-backend/issue-subtasks
+  ((backend org-tracker-jira-backend) issue-id)
+  (org-tracker-backend/search-issues
+   backend
+   (format "issuetype in subTaskIssueTypes() AND parent = %s order by created DESC"
+           issue-id)
+   :detailed t))
+
+(cl-defmethod org-tracker-backend/fetch-issue
+  ((backend org-tracker-jira-backend) issue-id)
+  (org-tracker--with-jira-backend backend
+    (jira->issue
+     (jiralib2-session-call
+      (format "/rest/api/2/issue/%s" issue-id)))))
+
+(comment
+ (org-tracker-backend/fetch-issue
+  (org-tracker-backend-name->backend 'readyset-jira)
+  "ENG-1327")
+ )
+
 (defun jiralib2--get-custom-field (backend name)
   "Query BACKEND for the 'id of the custom field with name NAME."
   (let ((fields (jiralib2-session-call "/rest/api/2/field")))
@@ -167,6 +188,7 @@
   ((backend org-tracker-jira-backend)
    &key title project-id epic-id workflow-state-id issue-type description labels
    parent)
+  (message "%s" issue-type)
   (org-tracker--with-jira-backend backend
     (let* ((epic-field (jiralib2--get-epic-custom-field backend))
            (fields `((summary . ,title)
@@ -265,14 +287,33 @@
 (cl-defmethod org-tracker-backend/create-subtask
   ((backend org-tracker-jira-backend)
    &rest rest-keys
-   &key parent-issue-id
+   &key parent-issue-id project-id
    &allow-other-keys)
   (plist-delete! rest-keys :parent-issue-id)
-  (apply
-   #'org-tracker-backend/create-issue
-   backend
-   :parent `((key . ,parent-issue-id))
-   rest-keys))
+  (let ((issue-type
+         (->>
+          (org-tracker--with-jira-backend backend
+            (jiralib2-session-call
+             "/rest/api/2/issuetype"))
+          (-filter (lambda (i) (eq 't (alist-get 'subtask i))))
+          (-filter (lambda (i)
+                     (string-equal
+                      project-id
+                      (->> i
+                           (alist-get 'scope)
+                           (alist-get 'project)
+                           (alist-get 'id)))))
+          car
+          (alist-get 'id))))
+    (unless issue-type
+      (error "Could not find Sub-Task issue type for project %s"
+             project-id))
+    (apply
+     #'org-tracker-backend/create-issue
+     backend
+     :parent `((key . ,parent-issue-id))
+     :issue-type issue-type
+     rest-keys)))
 
 (cl-defmethod org-tracker-backend/populate-issue
   ((backend org-tracker-jira-backend) story)
@@ -287,7 +328,7 @@
     (case key
       (key
        (cons
-        "jira-id"
+        ""
         (org-link-make-string
          (format "%s/browse/%s"
                  (jira-url backend)
@@ -301,6 +342,10 @@
                              (org-tracker-backend/issue-types
                               backend))
           (alist-get 'name value))))
+      (parent
+       (cons
+        "parent"
+        (alist-get 'key value)))
       (otherwise
        (cond
         ((or

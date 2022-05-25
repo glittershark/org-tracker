@@ -90,10 +90,13 @@ Can return `:UNSUPPORTED' if the backend does not support milestones"
 Can return `:UNSUPPORTED' if the backend does not support iterations"
   :UNSUPPORTED)
 
-(cl-defgeneric org-tracker-backend/issue-subtasks (backend)
-  "Query BACKEND for a list of the subtasks of the current issue.
+(cl-defgeneric org-tracker-backend/issue-subtasks (backend issue-id)
+  "Query BACKEND for a list of the subtasks of the given issue.
 Can return `:UNSUPPORTED' if the backend does not support subtasks"
   :UNSUPPORTED)
+
+(cl-defgeneric org-tracker-backend/fetch-issue (backend issue-id)
+  "Fetch the issue with the given ID from the backend")
 
 (cl-defgeneric org-tracker-backend/search-issues (backend query &key detailed)
   "Query BACKEND for issues with text matching QUERY.
@@ -112,7 +115,10 @@ backend")
              &key epic-id workflow-state-id assignee description title labels))
 
 (cl-defgeneric org-tracker-backend/create-subtask
-    (backend &key title parent-issue-id description workflow-state-id)
+    (backend
+     &rest rest-keys
+     &key title parent-issue-id description workflow-state-id
+     &allow-other-keys)
   :UNSUPPORTED)
 
 (cl-defgeneric org-tracker-backend/create-epic
@@ -588,14 +594,6 @@ children of that headline into tasks in the task list of the story."
 ;;; Task creation
 ;;;
 
-(cl-defun org-tracker-create-task (title &key story-id)
-  (cl-assert (and (stringp title)
-               (integerp story-id)))
-  (org-tracker-request
-   "POST"
-   (format "/stories/%d/tasks" story-id)
-   :data (json-encode `((description . ,title)))))
-
 (defun org-tracker-push-task-list (&optional parent-issue-id child-elts)
   "Writes each child of the element at point as a task list item.
 
@@ -607,46 +605,41 @@ allows manually passing an issue ID and list of org-element plists to write"
          (parent-issue-id (or parent-issue-id
                               (org-tracker-backend/extract-issue-id
                                backend elt)))
+         (parent-issue (org-tracker-backend/fetch-issue
+                        backend
+                        parent-issue-id))
+         (project-id (->> parent-issue
+                          (alist-get 'project)
+                          (alist-get 'id)))
          (child-elts (or child-elts (plist-get elt :children)))
-         (story (org-tracker-backend/ parent-clubhouse-id))
-         (existing-tasks (alist-get 'tasks story))
+         (existing-tasks (org-tracker-backend/issue-subtasks backend
+                                                             parent-issue-id))
          (task-exists
           (lambda (task-name)
             (cl-some (lambda (task)
-                       (string-equal task-name (alist-get 'description task)))
+                       (string-equal task-name
+                                     (or (alist-get 'name task)
+                                         (alist-get 'description tasks))))
                      existing-tasks)))
          (elts-with-starts
           (-map (lambda (e) (cons (set-marker (make-marker)
-                                         (plist-get e :begin))
-                             e))
+                                              (plist-get e :begin))
+                                  e))
                 child-elts)))
     (dolist (child-elt-and-start elts-with-starts)
       (let* ((start (car child-elt-and-start))
              (child-elt (cdr child-elt-and-start))
-             (task-name (substring-no-properties (plist-get child-elt :title))))
+             (task-name (substring-no-properties (plist-get child-elt :title)))
+             (description (org-tracker--description-for-elt child-elt)))
         (unless (funcall task-exists task-name)
-          (let ((task (org-tracker-create-task
-                       task-name
-                       :story-id parent-clubhouse-id)))
-            (org-tracker-populate-created-task child-elt task start)))))))
-
-(defun org-tracker-populate-created-task (elt task &optional begin)
-  (let ((elt-start (or begin (plist-get elt :begin)))
-        (task-id   (alist-get 'id task))
-        (story-id  (alist-get 'story_id task)))
-
-    (save-excursion
-      (goto-char elt-start)
-
-      (org-set-property "clubhouse-task-id" (format "%d" task-id))
-
-      (org-set-property "clubhouse-story-id"
-                        (org-link-make-string
-                         (org-tracker-link-to-story story-id)
-                         (number-to-string story-id)))
-
-      (org-todo "TODO"))))
-
+          (message "creating subtask")
+          (let ((task (org-tracker-backend/create-subtask
+                       backend
+                       :project-id project-id
+                       :title task-name
+                       :parent-issue-id parent-issue-id
+                       :description description)))
+            (org-tracker-populate-created-issue backend child-elt task)))))))
 ;;;
 ;;; Task Updates
 ;;;
@@ -769,7 +762,8 @@ and END."
   (interactive
    (when (use-region-p)
      (list (region-beginning) (region-end))))
-  (let ((backend (org-tracker-current-backend)))
+  (let ((backend (org-tracker-current-backend))
+        (headlines))
     (dolist (elt (org-tracker-collect-headlines beg end))
       (when-let* ((issue-id (org-tracker-backend/extract-issue-id
                              backend
