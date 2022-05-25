@@ -159,7 +159,7 @@ If nil is returned, the value will not be set as a property of the element"
    (error "Could not find org-tracker backend named `%s'"
           backend-name)))
 
-(defun org-tracker-current-backend ()
+(defun org-tracker-current-backend (&optional allow-missing)
   "Return the current configured org-tracker backend."
   (when (eq org-tracker-local-backend :UNSET)
     (org-tracker--populate-local-backend))
@@ -168,13 +168,14 @@ If nil is returned, the value will not be set as a property of the element"
       (if (symbolp backend)
           (org-tracker-backend-name->backend backend)
         backend)
-    (error "No currently configured org-tracker backend could be found")))
+    (unless allow-missing
+      (error "No currently configured org-tracker backend could be found"))))
 
 ;;;
 ;;; Configuration
 ;;;
 
-(defvar org-tracker-default-backend)
+(defvar org-tracker-default-backend nil)
 
 (defvar org-tracker-state-alist
   '(("LATER"  . "Unscheduled")
