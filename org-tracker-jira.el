@@ -8,7 +8,7 @@
 ;; Created: May 19, 2021
 ;; Modified: May 19, 2021
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "24.3"))
+;; Package-Requires: ((emacs "27.1"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
