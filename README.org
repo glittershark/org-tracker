@@ -5,3 +5,43 @@ trackers
 
 This project is a work-in-progress fork of [[https://github.com/glittershark/org-clubhouse][org-clubhouse]] to support pluggable
 backends, starting with JIRA
+
+* Installation
+
+Org-tracker allows configuring multiple backends, and using different backends
+for different org files. At a high level, configuration consists of adding a
+backend object as a key of ~org-tracker-backends~, then configuring that backend
+either as ~org-tracker-default-backend~ or per-file via the ~#+TRACKER_BACKEND~
+buffer setting.
+
+** JIRA
+
+First, generate an API token by logging into your JIRA instance and going to the
+"API tokens" page under account settings, located at
+https://id.atlassian.com/manage-profile/security/api-tokens for atlassian cloud.
+Then, add something like this to your emacs config:
+
+#+begin_src emacs-lisp
+(alist-set 'org-tracker-backends
+           'work-jira
+           (make-instance 'org-tracker-jira-backend
+                          :url "https://your-team-name.atlassian.net"
+                          :auth 'token
+                          :user-login-name "your-email@example.com"
+                          :token "jira-api-token"))
+#+end_src
+
+You can then either configure this as the default backend for all org files:
+
+#+begin_src emacs-lisp
+(setq org-tracker-default-backend 'work-jira)
+#+end_src
+
+Or set this as the backend for a particular org-mode file by adding the
+following line to the top of the file:
+
+#+begin_src org
+#+TRACKER_BACKEND: readyset-jira
+#+end_src
+
+** TODO Clubhouse
