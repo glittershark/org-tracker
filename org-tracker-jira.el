@@ -159,7 +159,7 @@
 (defun jiralib2--get-epic-custom-field (backend)
   (unless (and (slot-boundp backend 'epic-custom-field)
                (not (null (slot-value backend 'epic-custom-field))))
-    (let ((field (jiralib2--get-custom-field backend "Epic Link")))
+    (let ((field (jiralib2--get-custom-field backend  "Epic Link")))
       (setf (slot-value backend 'epic-custom-field) field)))
   (slot-value backend 'epic-custom-field))
 
@@ -210,7 +210,7 @@
   ((backend org-tracker-jira-backend)
    &key title project-id milestone-id description labels)
   (org-tracker--with-jira-backend backend
-    (let* ((epic-name-field (jiralib2--get-epic-custom-field backend "Epic Name"))
+    (let* ((epic-name-field (jiralib2--get-custom-field backend "Epic Name"))
            (epic-issue-type (org-tracker-jira--epic-issue-type-id backend))
            (fields `((summary . ,title)
                      (project . ((id . ,project-id)))
