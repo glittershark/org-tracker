@@ -130,19 +130,6 @@
                     (cons `(name . ,(alist-get 'summaryText issue))
                           issue))))))))
 
-(comment
- (org-tracker--with-jira-backend --backend
-   (jiralib2-session-call
-    "/rest/api/2/issue/picker"
-    :params `((query . "Design")
-              (currentJQL . "order by created DESC"))))
-
- (org-tracker-backend/search-issues
-  --backend
-  "Design")
- )
-
-
 (cl-defmethod org-tracker-backend/whoami
   ((backend org-tracker-jira-backend))
   (org-tracker--with-jira-backend backend
