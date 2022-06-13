@@ -328,7 +328,7 @@
     (case key
       (key
        (cons
-        ""
+        "jira-id"
         (org-link-make-string
          (format "%s/browse/%s"
                  (jira-url backend)
