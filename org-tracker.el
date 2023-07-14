@@ -141,6 +141,7 @@ If nil is returned, the value will not be set as a property of the element"
 
 (require 'org-tracker-jira)
 (require 'org-tracker-clubhouse)
+(require 'org-tracker-linear)
 
 (defvar-local org-tracker-local-backend :UNSET)
 
