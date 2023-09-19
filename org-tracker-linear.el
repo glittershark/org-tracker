@@ -165,19 +165,20 @@ query TeamId($teamName: String) {
 (cl-defmethod org-tracker-backend/search-issues
   ((backend org-tracker-linear-backend) query &key detailed)
   (org-tracker--with-linear-backend backend
-    (-map
-     #'linear->issue
-     (linear-load-all-pages
-      "issueSearch"
-      "id
+    (when (> (length query) 3)
+      (-map
+       #'linear->issue
+       (linear-load-all-pages
+        "issueSearch"
+        "id
        number
        team { key }
        name: title
        description
        state { id }"
-      :variable-declarations "$query: String"
-      :args "query: $query"
-      :variables `((query . ,query))))))
+        :variable-declarations "$query: String"
+        :args "query: $query"
+        :variables `((query . ,query)))))))
 
 (cl-defmethod org-tracker-backend/whoami
   ((backend org-tracker-linear-backend))
